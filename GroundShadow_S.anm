@@ -1,0 +1,215 @@
+--[[
+MIT License
+Copyright (c) 2025 sigma-axis
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+https://mit-license.org/
+]]
+
+--
+-- VERSION: v1.00-beta22
+--
+
+--track0:地面角度,-180,180,0,0.01
+--track1:光源角度,-180,180,-45,0.01
+--track2:光源傾斜,-800,800,0,0.01
+--track3:濃さ,0,100,50
+--check0:左右に射影,0
+--dialog:影色/col,_1=0x000000;影色強さ,_2=100;影拡散,_3=20;影位置移動,_4={0,0};影の範囲,_5=-1;影先端ぼかし,_6=0;地面位置,_7={0,200,0};カメラ位置,_8={0,-200};カメラ距離,_9=1024;視野幅(%),_10=100;前景透明度(%),_11=0;PI,_0=nil;
+local obj, math, tonumber = obj, math, tonumber;
+obj.setanchor("_7", 1, "star", "color", 0x40ff00, "xyz");
+obj.setanchor("_8", 1, "star", "color", 0x4040ff);
+local g_angle, l_angle, l_slope, alpha, wall, color, c_alpha, blur, pos, crop_h, crop_blur, grd_pos, cam_pos, cam_z, fov, f_alpha = obj.track0, obj.track1, obj.track2, obj.track3, obj.check0, tonumber(_1) or 0, tonumber(_2) or 100, tonumber(_3) or 20, _4, tonumber(_5) or 0, tonumber(_6) or 0, _7, _8, tonumber(_9) or 1024, tonumber(_10) or 100, tonumber(_11) or 100;
+_1 = nil; _2 = nil; _3 = nil; _4 = nil; _5 = nil; _6 = nil; _7 = nil; _8 = nil; _9 = nil; _10 = nil; _11 = nil;
+if _0 then
+	local c0, t0, t1, t2, t3 = _0[0], _0[1], _0[2], _0[3], _0[4]; _0 = nil;
+	if type(c0) == "boolean" then wall = c0;
+	elseif type(c0) == "number" then wall = c0 ~= 0 end
+	g_angle = tonumber(t0) or g_angle;
+	l_angle = tonumber(t1) or l_angle;
+	l_slope = tonumber(t2) or l_slope;
+	alpha = tonumber(t3) or alpha;
+end
+
+repeat -- to push alpha for exceptional cases.
+
+-- normalize parameters.
+alpha = math.min(math.max(alpha / 100, 0), 1);
+f_alpha = math.min(math.max(1 - f_alpha / 100, 0), 1);
+
+-- the light is (almost) parallel to the ground.
+if math.abs((g_angle - l_angle + 1) % 180 - 1) < 0.01 then break end
+g_angle, l_angle, l_slope = math.pi / 180 * g_angle, math.pi / 180 * l_angle, l_slope / 100;
+
+crop_h = math.floor(0.5 + crop_h); if crop_h == 0 then break end -- the whole shadow is cropped.
+crop_blur = math.max(math.floor(0.5 + crop_blur), 0);
+
+local center_x, center_y, center_z =
+	obj.cx - obj.ox - (obj.getvalue("cx") or 0),
+	obj.cy - obj.oy - (obj.getvalue("cy") or 0),
+	obj.cz - obj.oz - (obj.getvalue("cz") or 0);
+local dx, dy = pos and tonumber(pos[1]) or 0, pos and tonumber(pos[2]) or 0;
+local grd_xy, grd_z = (grd_pos and grd_pos[2] or 0) + center_y,
+	(grd_pos and grd_pos[3] or 0) + center_z;
+local cam_x, cam_y = (cam_pos and tonumber(cam_pos[1]) or 0) + center_x,
+	(cam_pos and tonumber(cam_pos[2]) or 0) + center_y;
+fov = math.max(10.24 / math.max(cam_z, 1) * fov, 0);
+
+local w, h = obj.getpixel();
+local WM, HM = obj.getinfo("image_max");
+if wall then
+	-- swap or flip x/y-related variables.
+	g_angle, l_angle, l_slope = -g_angle, -l_angle, -l_slope;
+	cam_x, cam_y = cam_y, cam_x; dx, dy = dy, dx;
+	w, h = h, w; WM, HM = HM, WM;
+	grd_xy = (grd_pos and grd_pos[1] or 0) + center_x;
+end
+
+-- calculate the coordinates of four corners of the shadow.
+local x1, x2, x3, x4, y1, y2, z1, z2, p1, p2 do
+	local w2, h2 = w / 2 + blur, h / 2 + blur;
+	local c_g, s_g = math.cos(g_angle), math.sin(g_angle);
+	local t_gl = math.tan(math.pi / 2 + g_angle - l_angle);
+	local cs = s_g - c_g * t_gl; -- cos(l_angle) / sin(g_angle - l_angle).
+	local ss =-c_g - s_g * t_gl; -- sin(l_angle) / sin(g_angle - l_angle).
+
+	local l1, l2 = -h2 - grd_xy, h2 - grd_xy;
+	if crop_h > 0 then
+		local l = crop_h + blur;
+		l1, l2 = math.max(l1, -l), math.min(l2, l);
+	end
+	l1, l2 = l1 * cs, l2 * cs;
+	y1, y2, z1, z2 = grd_xy + l1 * s_g, grd_xy + l2 * s_g, l1 *-c_g, l2 *-c_g;
+
+	-- displacement by grd_z.
+	l1, l2 = grd_z * s_g * cs, grd_z * s_g *-ss;
+	y1, y2, z1, z2 = y1 + l2, y2 + l2, z1 + l1, z2 + l1;
+
+	-- calculate x-coordinates.
+	x1, x2, x3, x4 = -w2 + z1 * l_slope, w2 + z1 * l_slope, w2 + z2 * l_slope, -w2 + z2 * l_slope;
+
+	-- adjustment for the camera position and fov.
+	z1, z2 = fov * z1, fov * z2;
+	local q1, q2 = z1 / 1024, z2 / 1024;
+	x1, x2, x3, x4 = x1 + cam_x * q1, x2 + cam_x * q1, x3 + cam_x * q2, x4 + cam_x * q2;
+	y1, y2 = y1 + cam_y * q1, y2 + cam_y * q2;
+	p1, p2 = 1 + q1, 1 + q2;
+end
+
+-- calculate the center and the size of the canvas.
+local X, Y, W, H do
+	local function sgn(x) return x > 0 and 1 or x < 0 and -1 or 0 end
+	-- fractions of w and h. used to avoid half-integral position in the later `draw(X, Y)`.
+	local fw, fh = (w % 2) / 2, (h % 2) / 2;
+
+	local X1, X2, X3, X4;
+	if p1 > 0 then X1, X2 = dx + x1 / p1, dx + x2 / p1 else X1, X2 = sgn(x1 - cam_x * p1) * WM, sgn(x2 - cam_x * p1) * WM end
+	if p2 > 0 then X3, X4 = dx + x3 / p2, dx + x4 / p2 else X3, X4 = sgn(x3 - cam_x * p2) * WM, sgn(x4 - cam_x * p2) * WM end
+	local Xm, XM = math.floor(math.min(-w / 2, X1, X2, X3, X4) + fw) - fw,
+		math.ceil(math.max(w / 2, X1, X2, X3, X4) - fw) + fw;
+
+	local Y1, Y2 = p1 > 0 and dy + y1 / p1 or sgn(y1 - cam_y * p1) * HM,
+		p2 > 0 and dy + y2 / p2 or sgn(y2 - cam_y * p2) * HM;
+	local Ym, YM = math.floor(math.min(-h / 2, Y1, Y2) + fh) - fh,
+		math.ceil(math.max(h / 2, Y1, Y2) - fh) + fh;
+
+	-- suppress oversizing.
+	if XM - Xm > WM then
+		if -WM / 2 - fw <= Xm then XM = Xm + WM;
+		elseif XM <= math.floor(WM / 2 - fw) + fw then Xm = XM - WM;
+		else XM = math.floor(WM / 2 - fw) + fw; Xm = -XM end
+	end
+	if YM - Ym > HM then
+		if -HM / 2 - fh <= Ym then YM = Ym + HM;
+		elseif YM <= math.floor(HM / 2 - fh) + fh then Ym = YM - HM;
+		else YM = math.floor(HM / 2 - fh) + fh; Ym = -YM end
+	end
+
+	X, Y = -(XM + Xm) / 2, -(YM + Ym) / 2;
+	W, H = XM - Xm, YM - Ym;
+end
+
+-- translate the coordinates to apply (dx, dy), and to fit with the canvas.
+dx, dy = dx + X, dy + Y;
+x1, x2, x3, x4 = x1 + dx * p1, x2 + dx * p1, x3 + dx * p2, x4 + dx * p2;
+y1, y2 = y1 + dy * p1, y2 + dy * p2;
+
+-- backup the current image and prepare the shadow.
+if f_alpha > 0 then obj.copybuffer("cache:obj", "obj") end
+if crop_h > 0 or crop_blur > 0 then
+	local label_t, label_b = wall and "左" or "上", wall and "右" or "下";
+	local top, bottom;
+	if crop_h > 0 then
+		-- limit the height of the shadow.
+		top = math.floor(0.5 + grd_xy - crop_h + h / 2);
+		bottom = h - (top + 2 * crop_h);
+		if top >= h or bottom >= h then break end -- no image in the range.
+		if top > 0 or bottom > 0 then
+			obj.effect("クリッピング", label_t, math.max(top, 0), label_b, math.max(bottom, 0),
+				"中心の位置を変更", 1);
+		end
+	else
+		-- extend so points at the height grd_xy are not blurred.
+		top = math.min(0, grd_xy + h / 2 - crop_blur);
+		bottom = h - math.max(h, grd_xy + h / 2 + crop_blur);
+	end
+	if crop_blur > 0 then
+		-- apply the blur to the both end.
+		local ex_t, ex_b = math.min(math.max(-top, 0), crop_blur),
+			math.min(math.max(-bottom, 0), crop_blur);
+		if ex_t > 0 or ex_b > 0 then obj.effect("領域拡張", label_t, ex_t, label_b, ex_b) end
+		obj.effect("境界ぼかし", "範囲", crop_blur, "縦横比", wall and 100 or -100);
+		if ex_t > 0 or ex_b > 0 then obj.effect("クリッピング", label_t, ex_t, label_b, ex_b) end
+	end
+end
+if c_alpha > 0 then obj.effect("単色化", "color", color, "強さ", c_alpha, "輝度を保持する", 0) end
+if blur > 0 then obj.effect("ぼかし", "範囲", blur) end
+
+-- prepare the canvas and draw the shadow.
+if wall then
+	obj.setoption("dst", "tmp", H, W);
+	obj.drawpoly(y1, x1, z1, y2, x4, z2, y2, x3, z2, y1, x2, z1,
+		0, 0, h + 2 * blur, 0, h + 2 * blur, w + 2 * blur, 0, w + 2 * blur, alpha);
+	X, Y = Y, X; -- set back the swapped coordinates.
+else
+	obj.setoption("dst", "tmp", W, H);
+	obj.drawpoly(x1, y1, z1, x2, y1, z1, x3, y2, z2, x4, y2, z2,
+		0, 0, w + 2 * blur, 0, w + 2 * blur, h + 2 * blur, 0, h + 2 * blur, alpha);
+end
+
+-- draw the original image.
+if f_alpha > 0 then
+	obj.copybuffer("obj", "cache:obj");
+	obj.draw(X, Y, 0, 1, f_alpha);
+end
+
+-- adjust the center according to the canvas position.
+obj.copybuffer("obj", "tmp");
+obj.cx, obj.cy = obj.cx + X, obj.cy + Y;
+
+return;
+until true;
+
+if f_alpha < 1 then
+	-- simply push alpha value to the image.
+	obj.setoption("dst", "tmp", obj.getpixel());
+	obj.draw(0, 0, 0, 1, f_alpha);
+	obj.copybuffer("obj", "tmp");
+end
