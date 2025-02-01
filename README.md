@@ -2,7 +2,7 @@
 
 影を立体的に地面へ落とすアニメーション効果．地面だけでなく壁や天井に影を落としたような使い方もできます．
 
-[ダウンロードはこちら．](https://github.com/sigma-axis/aviutl_script_GroundShadow_S/releases) \[紹介動画準備中...\]
+[ダウンロードはこちら．](https://github.com/sigma-axis/aviutl_script_GroundShadow_S/releases) [紹介動画．](https://www.nicovideo.jp/watch/sm44602570)
 
 ![動作デモ](https://github.com/user-attachments/assets/9512ddc9-2efe-40b0-8239-e76e292539a9)
 
