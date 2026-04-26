@@ -1,12 +1,18 @@
 # GroundShadow_S AviUtl スクリプト
 
-影を立体的に地面へ落とすアニメーション効果．地面だけでなく壁や天井に影を落としたような使い方もできます．
+影を立体的に地面へ落とすアニメーション効果．地面だけでなく壁や天井に影を落としたような使い方もできます．[機能追加更新版はこちら．](https://github.com/sigma-axis/aviutl2_script_GroundShadow2_S)
 
 [ダウンロードはこちら．](https://github.com/sigma-axis/aviutl_script_GroundShadow_S/releases) [紹介動画．](https://www.nicovideo.jp/watch/sm44602570)
 
 ![動作デモ](https://github.com/user-attachments/assets/9512ddc9-2efe-40b0-8239-e76e292539a9)
 
 ![色んな影の落とし方](https://github.com/user-attachments/assets/8323b397-022e-4af5-abb1-9ed3bd059dbc)
+
+##  お願い
+
+このスクリプトを使った動画などでは，ニコニコの親作品にこのスクリプトの紹介動画を登録してくれると嬉しいです．任意ではありますが，登録してくれたほうが励みになります．
+
+- 登録 ID: `sm44602570`
 
 ## 動作要件
 
